@@ -9,13 +9,13 @@ include $(DEVKITARM)/base_rules
 ################################################################################
 
 IPL_LOAD_ADDR := 0x40003000
-LPVERSION_MAJOR := 3
+LPVERSION_MAJOR := 0
 LPVERSION_MINOR := 0
-LPVERSION_BUGFX := 5
+LPVERSION_BUGFX := 1
 
 ################################################################################
 
-TARGET := TegraExplorer
+TARGET := CPR
 BUILDDIR := build
 OUTPUTDIR := output
 SOURCEDIR = source
