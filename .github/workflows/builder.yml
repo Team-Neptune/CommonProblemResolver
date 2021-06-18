@@ -1,4 +1,4 @@
-name: TegraExplorer builder
+name: PCR builder
 
 on: [push, pull_request]
 
@@ -10,10 +10,10 @@ jobs:
     steps:
     - uses: actions/checkout@v1
         
-    - name: Build TegraExplorer
+    - name: Build PCR
       run: make -j$(nproc)
         
     - uses: actions/upload-artifact@master
       with:
-        name: TegraExplorer
-        path: output/TegraExplorer.bin 
+        name: CommonProblemResolver
+        path: output/CommonProblemResolver.bin 
