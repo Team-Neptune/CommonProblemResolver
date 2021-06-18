@@ -21,6 +21,7 @@
 #include "../fs/readers/folderReader.h"
 #include "../fs/fstypes.h"
 #include "../fs/fscopy.h"
+#include <utils/sprintf.h>
 
 extern hekate_config h_cfg;
 
@@ -29,8 +30,10 @@ enum {
     DeleteBootFlags,
     DeleteThemes,
     FixClingWrap,
+    FixAIOUpdaterBoot,
     FixAll,
     MainOther,
+    MainViewStillNoBootInfo,
     // MainBrowseSd,
     // MainMountSd,
     // MainBrowseEmmc,
@@ -50,9 +53,10 @@ enum {
 
 MenuEntry_t mainMenuEntries[] = {
     [MainExplore] = {.optionUnion = COLORTORGB(COLOR_WHITE) | SKIPBIT, .name = "-- Tools --"},
-    [DeleteBootFlags] = {.optionUnion = COLORTORGB(COLOR_GREEN), .name = "Delete boot2.flags"},
+    [DeleteBootFlags] = {.optionUnion = COLORTORGB(COLOR_GREEN), .name = "Disable automatic sysmodule startup"},
     [DeleteThemes] = {.optionUnion = COLORTORGB(COLOR_GREEN), .name = "Delete installed themes"},
     [FixClingWrap] = {.optionUnion = COLORTORGB(COLOR_GREEN), .name = "Fix ClingWrap"},
+    [FixAIOUpdaterBoot] = {.optionUnion = COLORTORGB(COLOR_GREEN), .name = "Fix Switch-AiO-Updater update"},
     [FixAll] = {.optionUnion = COLORTORGB(COLOR_GREEN), .name = "Try everything"},
     
     // [MainBrowseSd] = {.optionUnion = COLORTORGB(COLOR_GREEN), .name = "Browse SD"},
@@ -64,6 +68,7 @@ MenuEntry_t mainMenuEntries[] = {
     // [MainDumpFw] = {.optionUnion = COLORTORGB(COLOR_BLUE), .name = "Dump Firmware"},
     // [MainViewKeys] = {.optionUnion = COLORTORGB(COLOR_YELLOW), .name = "View dumped keys"},
     [MainOther] = {.optionUnion = COLORTORGB(COLOR_WHITE) | SKIPBIT, .name = "\n-- Other --"},
+    [MainViewStillNoBootInfo] = {.optionUnion = COLORTORGB(COLOR_YELLOW), .name = "My switch still does not boot"},
     [MainViewCredits] = {.optionUnion = COLORTORGB(COLOR_YELLOW), .name = "Credits"},
     [MainExit] = {.optionUnion = COLORTORGB(COLOR_WHITE) | SKIPBIT, .name = "\n-- Exit --"},
     [MainPowerOff] = {.optionUnion = COLORTORGB(COLOR_VIOLET), .name = "Power off"},
@@ -151,9 +156,16 @@ void DeleteFileSimple(char *thing){
         DrawError(newErrCode(res));
     free(thing);
 }
+void RenameFileSimple(char *sourcePath, char *destPath){
+    int res = f_rename(sourcePath, destPath);
+    if (res){
+        DrawError(newErrCode(res));
+    }
+}
 
 void deleteBootFlags(){
     gfx_clearscreen();
+    gfx_printf("\n\n-- Disabling automatic sysmodule startup.\n\n");
     char *storedPath = CpyStr("sd:/atmosphere/contents");
     int readRes = 0;
     Vector_t fileVec = ReadFolder(storedPath, &readRes);
@@ -190,6 +202,7 @@ void deleteTheme(char* basePath, char* folderId){
 
 void deleteInstalledThemes(){
     gfx_clearscreen();
+    gfx_printf("\n\n-- Deleting installed themes.\n\n");
     deleteTheme("sd:/atmosphere/contents", "0100000000001000");
     deleteTheme("sd:/atmosphere/contents", "0100000000001007");
     deleteTheme("sd:/atmosphere/contents", "0100000000001013");
@@ -200,6 +213,7 @@ void deleteInstalledThemes(){
 
 void fixClingWrap(){
     gfx_clearscreen();
+    gfx_printf("\n\n-- Fixing ClingWrap.\n\n");
     char *bpath = CpyStr("sd:/_b0otloader");
     char *bopath = CpyStr("sd:/bootloader");
     char *kpath = CpyStr("sd:/atmosphere/_k1ps");
@@ -227,6 +241,76 @@ void fixClingWrap(){
         gfx_printf("-- Fixed kips\n");
     }
 
+    free(bpath);
+    free(bopath);
+    free(kpath);
+    free(kopath);
+
+    gfx_printf("\n\n Done, press a key to proceed.");
+    hidWait();
+}
+
+void fixAIOUpdate(){
+    gfx_clearscreen();
+    gfx_printf("\n\n-- Fix broken Switch-AiO-Updater update.\n\n");
+
+    char *aio_fs_path = CpyStr("sd:/atmosphere/fusee-secondary.bin.aio");
+    char *aio_p_path = CpyStr("sd:/sept/payload.bin.aio");
+    char *aio_strt_path = CpyStr("sd:/atmosphere/stratosphere.romfs.aio");
+
+    char *o_fs_path = CpyStr("sd:/atmosphere/fusee-secondary.bin");
+    char *o_p_path = CpyStr("sd:/sept/payload.bin");
+    char *o_strt_path = CpyStr("sd:/atmosphere/stratosphere.romfs");
+
+    if (FileExists(aio_fs_path)) {
+        gfx_printf("Detected aio updated fusee-secondary file -> replacing original\n\n");
+        if (FileExists(o_fs_path)) {
+            DeleteFileSimple(o_fs_path);
+        }
+        RenameFileSimple(aio_fs_path, o_fs_path);
+    }
+    free(aio_fs_path);
+    free(o_fs_path);
+
+    if (FileExists(aio_p_path)) {
+        gfx_printf("Detected aio updated paload file -> replacing original\n\n");
+        if (FileExists(o_p_path)) {
+            DeleteFileSimple(o_p_path);
+        }
+        RenameFileSimple(aio_p_path, o_p_path);
+    }
+    free(aio_p_path);
+    free(o_p_path);
+
+    if (FileExists(aio_strt_path)) {
+        gfx_printf("Detected aio updated stratosphere file -> replacing original\n\n");
+        if (FileExists(o_strt_path)) {
+            DeleteFileSimple(o_strt_path);
+        }
+        RenameFileSimple(aio_strt_path, o_strt_path);
+    }
+    free(aio_strt_path);
+    free(o_strt_path);
+
+
+    gfx_printf("\n\n Done, press a key to proceed.");
+    hidWait();
+
+}
+
+void stillNoBootInfo(){
+    gfx_clearscreen();
+    gfx_printf("\n\n-- My switch still does not boot.\n\n");
+
+    gfx_printf("%kDo you have a gamecard inserted?\n", COLOR_WHITE);
+    gfx_printf("Try taking it out and reboot.\n\n");
+
+    gfx_printf("%kDid you recently update Atmosphere/DeepSea?\n", COLOR_WHITE);
+    gfx_printf("Insert your sdcard into a computer, delete 'atmosphere', 'bootloader' & 'sept', download your preffered CFW and put the files back on your switch.\n\n");
+
+    gfx_printf("%kDid you just buy a new SD-card?\n", COLOR_WHITE);
+    gfx_printf("Make sure its not a fake card.\n\n");
+
     gfx_printf("\n\n Done, press a key to proceed.");
     hidWait();
 }
@@ -236,13 +320,16 @@ void fixAll(){
     deleteBootFlags();
     deleteInstalledThemes();
     fixClingWrap();
+    stillNoBootInfo();
 }
 
 menuPaths mainMenuPaths[] = {
     [DeleteBootFlags] = deleteBootFlags,
     [DeleteThemes] = deleteInstalledThemes,
     [FixClingWrap] = fixClingWrap,
+    [FixAIOUpdaterBoot] = fixAIOUpdate,
     [FixAll] = fixAll,
+    [MainViewStillNoBootInfo] = stillNoBootInfo,
     // [MainBrowseSd] = HandleSD,
     // [MainMountSd] = MountOrUnmountSD,
     // [MainBrowseEmmc] = HandleEMMC,
