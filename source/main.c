@@ -291,25 +291,25 @@ void ipl_main()
 
 	gfx_clearscreen();
 
-	int res = -1;
+	// int res = -1;
 
 	
-	if (btn_read() & BTN_VOL_DOWN || DumpKeys())
-		res = GetKeysFromFile("sd:/switch/prod.keys");
+	// if (btn_read() & BTN_VOL_DOWN || DumpKeys())
+	// 	res = GetKeysFromFile("sd:/switch/prod.keys");
 
-	TConf.keysDumped = (res > 0) ? 0 : 1;
+	// TConf.keysDumped = (res > 0) ? 0 : 1;
 
-	if (res > 0)
-		DrawError(newErrCode(TE_ERR_KEYDUMP_FAIL));
+	// if (res > 0)
+	// 	DrawError(newErrCode(TE_ERR_KEYDUMP_FAIL));
 	
-	if (TConf.keysDumped)
-		SetKeySlots();
+	// if (TConf.keysDumped)
+	// 	SetKeySlots();
 	
-	if (res == 0)
-		hidWait();
+	// if (res == 0)
+	// 	hidWait();
 
-	if (FileExists("sd:/startup.te"))
-		RunScript("sd:/", newFSEntry("startup.te"));
+	// if (FileExists("sd:/startup.te"))
+	// 	RunScript("sd:/", newFSEntry("startup.te"));
 
 	EnterMainMenu();
 

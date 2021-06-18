@@ -168,14 +168,16 @@ ErrCode_t FolderDelete(const char *path){
                 ret = FolderDelete(temp);
             }
             else {
-                gfx_puts_limit(fs[i].name, (YLEFT - x) / 16 - 10);
-                BoxRestOfScreen();
+                // gfx_puts_limit(fs[i].name, (YLEFT - x) / 16 - 10);
+                // BoxRestOfScreen();
                 res = f_unlink(temp);
                 if (res){
                     ret = newErrCode(res);
                 }
-                gfx_con_setpos(x, y);   
+                // gfx_con_setpos(x, y); 
+                
             }
+            gfx_printf("Deleted: %s \n", temp);  
             free(temp);
         }
     }
