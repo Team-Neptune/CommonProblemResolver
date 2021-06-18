@@ -320,6 +320,9 @@ void fixAll(){
     deleteBootFlags();
     deleteInstalledThemes();
     fixClingWrap();
+    fixAIOUpdate();
+
+
     stillNoBootInfo();
 }
 
