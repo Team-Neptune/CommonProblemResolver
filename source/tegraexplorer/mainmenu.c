@@ -22,6 +22,8 @@
 #include "../fs/fstypes.h"
 #include "../fs/fscopy.h"
 #include <utils/sprintf.h>
+#include <stdlib.h>
+#include <string.h>
 
 extern hekate_config h_cfg;
 
@@ -31,17 +33,12 @@ enum {
     DeleteThemes,
     FixClingWrap,
     FixAIOUpdaterBoot,
+    FixArchiveBitA,
+    FixArchiveBitN,
+    // FixMacSpecialFolders,
     FixAll,
     MainOther,
     MainViewStillNoBootInfo,
-    // MainBrowseSd,
-    // MainMountSd,
-    // MainBrowseEmmc,
-    // MainBrowseEmummc,
-    // MainTools,
-    // MainPartitionSd,
-    // MainDumpFw,
-    // MainViewKeys,
     MainViewCredits,
     MainExit,
     MainPowerOff,
@@ -57,7 +54,14 @@ MenuEntry_t mainMenuEntries[] = {
     [DeleteThemes] = {.optionUnion = COLORTORGB(COLOR_GREEN), .name = "Delete installed themes"},
     [FixClingWrap] = {.optionUnion = COLORTORGB(COLOR_GREEN), .name = "Fix ClingWrap"},
     [FixAIOUpdaterBoot] = {.optionUnion = COLORTORGB(COLOR_GREEN), .name = "Fix Switch-AiO-Updater update"},
+    [FixArchiveBitA] = {.optionUnion = COLORTORGB(COLOR_GREEN), .name = "Fix archive bit (all folders)"},
+    [FixArchiveBitN] = {.optionUnion = COLORTORGB(COLOR_GREEN), .name = "Fix archive bit (nintendo folder)"},
+    // [FixMacSpecialFolders] = {.optionUnion = COLORTORGB(COLOR_GREEN), .name = "Remove special folders created by Mac"},
     [FixAll] = {.optionUnion = COLORTORGB(COLOR_GREEN), .name = "Try everything"},
+    [MainOther] = {.optionUnion = COLORTORGB(COLOR_GREEN) | SKIPBIT, .name = "\n-- Other --"},
+
+
+    
     
     // [MainBrowseSd] = {.optionUnion = COLORTORGB(COLOR_GREEN), .name = "Browse SD"},
     // [MainMountSd] = {.optionUnion = COLORTORGB(COLOR_YELLOW)}, // To mount/unmount the SD
@@ -89,81 +93,257 @@ void HandleSD(){
         FileExplorer("sd:/");
 }
 
-void HandleEMMC(){
-   GptMenu(MMC_CONN_EMMC);
-}
-
-void HandleEMUMMC(){
-    GptMenu(MMC_CONN_EMUMMC);
-}
-
-void ViewKeys(){
-    gfx_clearscreen();
-    for (int i = 0; i < 3; i++){
-        gfx_printf("\nBis key 0%d:   ", i);
-        PrintKey(dumpedKeys.bis_key[i], AES_128_KEY_SIZE * 2);
-    }
-    
-    gfx_printf("\nMaster key 0: ");
-    PrintKey(dumpedKeys.master_key, AES_128_KEY_SIZE);
-    gfx_printf("\nHeader key:   ");
-    PrintKey(dumpedKeys.header_key, AES_128_KEY_SIZE * 2);
-    gfx_printf("\nSave mac key: ");
-    PrintKey(dumpedKeys.save_mac_key, AES_128_KEY_SIZE);
-
-    u8 fuseCount = 0;
-    for (u32 i = 0; i < 32; i++){
-        if ((fuse_read_odm(7) >> i) & 1)
-            fuseCount++;
-    }
-
-    gfx_printf("\n\nPkg1 ID: '%s' (kb %d)\nFuse count: %d", TConf.pkg1ID, TConf.pkg1ver, fuseCount);
-
-    hidWait();
-}
-
-void ViewCredits(){
-    gfx_clearscreen();
-    gfx_printf("\nCommon Problem Resolver v%d.%d.%d\nBy Team Neptune\n\nBased on TegraExplorer by SuchMemeManySkill,\nLockpick_RCM & Hekate, from shchmue & CTCaer\n\n\n", LP_VER_MJ, LP_VER_MN, LP_VER_BF);
-    hidWait();
-}
 
 extern bool sd_mounted;
 extern bool is_sd_inited;
 extern int launch_payload(char *path);
 
-void RebootToAMS(){
-    launch_payload("sd:/atmosphere/reboot_payload.bin");
-}
+///////////////////////////////////////////////////////////////////////
 
-void RebootToHekate(){
-    launch_payload("sd:/bootloader/update.bin");
-}
-
-void MountOrUnmountSD(){
-    gfx_clearscreen();
-    if (sd_mounted)
-        sd_unmount();
-    else if (!sd_mount())
-        hidWait();
-}
-
-
-void DeleteFileSimple(char *thing){
+void _DeleteFileSimple(char *thing){
     //char *thing = CombinePaths(path, entry.name);
     int res = f_unlink(thing);
     if (res)
         DrawError(newErrCode(res));
     free(thing);
 }
-void RenameFileSimple(char *sourcePath, char *destPath){
+void _RenameFileSimple(char *sourcePath, char *destPath){
     int res = f_rename(sourcePath, destPath);
     if (res){
         DrawError(newErrCode(res));
     }
 }
 
-void deleteBootFlags(){
+int _fix_attributes(char *path, u32 *total, u32 hos_folder, u32 check_first_run){
+	FRESULT res;
+	DIR dir;
+	u32 dirLength = 0;
+	static FILINFO fno;
+
+	if (check_first_run)
+	{
+		// Read file attributes.
+		res = f_stat(path, &fno);
+		if (res != FR_OK)
+			return res;
+
+		// Check if archive bit is set.
+		if (fno.fattrib & AM_ARC)
+		{
+			*(u32 *)total = *(u32 *)total + 1;
+			f_chmod(path, 0, AM_ARC);
+		}
+	}
+
+	// Open directory.
+	res = f_opendir(&dir, path);
+	if (res != FR_OK)
+		return res;
+
+	dirLength = strlen(path);
+	for (;;)
+	{
+		// Clear file or folder path.
+		path[dirLength] = 0;
+
+		// Read a directory item.
+		res = f_readdir(&dir, &fno);
+
+		// Break on error or end of dir.
+		if (res != FR_OK || fno.fname[0] == 0)
+			break;
+
+		// Skip official Nintendo dir if started from root.
+		if (!hos_folder && !strcmp(fno.fname, "Nintendo"))
+			continue;
+
+		// Set new directory or file.
+		memcpy(&path[dirLength], "/", 1);
+		memcpy(&path[dirLength + 1], fno.fname, strlen(fno.fname) + 1);
+
+		// Check if archive bit is set.
+		if (fno.fattrib & AM_ARC)
+		{
+			*total = *total + 1;
+			f_chmod(path, 0, AM_ARC);
+		}
+
+		// Is it a directory?
+		if (fno.fattrib & AM_DIR)
+		{
+			// Set archive bit to NCA folders.
+			if (hos_folder && !strcmp(fno.fname + strlen(fno.fname) - 4, ".nca"))
+			{
+				*total = *total + 1;
+				f_chmod(path, AM_ARC, AM_ARC);
+			}
+
+			// Enter the directory.
+			res = _fix_attributes(path, total, hos_folder, 0);
+			if (res != FR_OK)
+				break;
+		}
+	}
+
+	f_closedir(&dir);
+
+	return res;
+}
+
+
+void m_entry_fixArchiveBit(u32 type){
+    gfx_clearscreen();
+    gfx_printf("\n\n-- Fix Archive Bits\n\n");
+
+    char path[256];
+	char label[16];
+
+	u32 total = 0;
+	if (sd_mount())
+	{
+		switch (type)
+		{
+		case 0:
+			strcpy(path, "/");
+			strcpy(label, "SD Card");
+			break;
+		case 1:
+		default:
+			strcpy(path, "/Nintendo");
+			strcpy(label, "Nintendo folder");
+			break;
+		}
+
+		gfx_printf("Traversing all %s files!\nThis may take some time...\n\n", label);
+		_fix_attributes(path, &total, type, type);
+		gfx_printf("%kTotal archive bits cleared: %d!%k", 0xFF96FF00, total, 0xFFCCCCCC);
+		
+        gfx_printf("\n\n Done, press a key to proceed.");
+        hidWait();
+	}
+}
+
+
+void m_entry_fixAIOUpdate(){
+    gfx_clearscreen();
+    gfx_printf("\n\n-- Fix broken Switch-AiO-Updater update.\n\n");
+
+    char *aio_fs_path = CpyStr("sd:/atmosphere/fusee-secondary.bin.aio");
+    char *aio_p_path = CpyStr("sd:/sept/payload.bin.aio");
+    char *aio_strt_path = CpyStr("sd:/atmosphere/stratosphere.romfs.aio");
+
+    char *o_fs_path = CpyStr("sd:/atmosphere/fusee-secondary.bin");
+    char *o_p_path = CpyStr("sd:/sept/payload.bin");
+    char *o_strt_path = CpyStr("sd:/atmosphere/stratosphere.romfs");
+
+    if (FileExists(aio_fs_path)) {
+        gfx_printf("Detected aio updated fusee-secondary file -> replacing original\n\n");
+        if (FileExists(o_fs_path)) {
+            _DeleteFileSimple(o_fs_path);
+        }
+        _RenameFileSimple(aio_fs_path, o_fs_path);
+    }
+    free(aio_fs_path);
+    free(o_fs_path);
+
+    if (FileExists(aio_p_path)) {
+        gfx_printf("Detected aio updated paload file -> replacing original\n\n");
+        if (FileExists(o_p_path)) {
+            _DeleteFileSimple(o_p_path);
+        }
+        _RenameFileSimple(aio_p_path, o_p_path);
+    }
+    free(aio_p_path);
+    free(o_p_path);
+
+    if (FileExists(aio_strt_path)) {
+        gfx_printf("Detected aio updated stratosphere file -> replacing original\n\n");
+        if (FileExists(o_strt_path)) {
+            _DeleteFileSimple(o_strt_path);
+        }
+        _RenameFileSimple(aio_strt_path, o_strt_path);
+    }
+    free(aio_strt_path);
+    free(o_strt_path);
+
+
+    gfx_printf("\n\n Done, press a key to proceed.");
+    hidWait();
+}
+
+void m_entry_fixClingWrap(){
+    gfx_clearscreen();
+    gfx_printf("\n\n-- Fixing ClingWrap.\n\n");
+    char *bpath = CpyStr("sd:/_b0otloader");
+    char *bopath = CpyStr("sd:/bootloader");
+    char *kpath = CpyStr("sd:/atmosphere/_k1ps");
+    char *kopath = CpyStr("sd:/atmosphere/kips");
+
+    char *ppath = CpyStr("sd:/bootloader/_patchesCW.ini");
+    char *popath = CpyStr("sd:/atmosphere/patches.ini");
+
+    if (FileExists(bpath)) {
+        if (FileExists(bopath)) {
+            FolderDelete(bopath);
+        }
+        int res = f_rename(bpath, bopath);
+        if (res){
+            DrawError(newErrCode(res));
+        }
+        gfx_printf("-- Fixed Bootloader\n");
+    }
+
+    if (FileExists(kpath)) {
+        if (FileExists(kopath)) {
+            FolderDelete(kopath);
+        }
+        int res = f_rename(kpath, kopath);
+        if (res){
+            DrawError(newErrCode(res));
+        }
+        gfx_printf("-- Fixed kips\n");
+    }
+
+    if (FileExists(ppath)) {
+        if (FileExists(popath)) {
+            _DeleteFileSimple(popath);
+        }
+        _RenameFileSimple(ppath,popath);
+        gfx_printf("-- Fixed patches.ini\n");
+    }
+
+    free(bpath);
+    free(bopath);
+    free(kpath);
+    free(kopath);
+    free(ppath);
+    free(popath);
+
+    gfx_printf("\n\n Done, press a key to proceed.");
+    hidWait();
+}
+
+void _deleteTheme(char* basePath, char* folderId){
+    char *path = CombinePaths(basePath, folderId);
+    if (FileExists(path)) {
+        gfx_printf("-- Theme found: %s\n", path);
+        FolderDelete(path);
+    }
+    free(path);
+}
+
+void m_entry_deleteInstalledThemes(){
+    gfx_clearscreen();
+    gfx_printf("\n\n-- Deleting installed themes.\n\n");
+    _deleteTheme("sd:/atmosphere/contents", "0100000000001000");
+    _deleteTheme("sd:/atmosphere/contents", "0100000000001007");
+    _deleteTheme("sd:/atmosphere/contents", "0100000000001013");
+
+    gfx_printf("\n\n Done, press a key to proceed.");
+    hidWait();
+}
+
+void m_entry_deleteBootFlags(){
     gfx_clearscreen();
     gfx_printf("\n\n-- Disabling automatic sysmodule startup.\n\n");
     char *storedPath = CpyStr("sd:/atmosphere/contents");
@@ -182,7 +362,7 @@ void deleteBootFlags(){
 
             if (FileExists(flagPath)) {
                 gfx_printf("Deleting: %s\n", flagPath);
-                DeleteFileSimple(flagPath);
+                _DeleteFileSimple(flagPath);
             }
             free(flagPath);
         }
@@ -191,114 +371,15 @@ void deleteBootFlags(){
     hidWait();
 }
 
-void deleteTheme(char* basePath, char* folderId){
-    char *path = CombinePaths(basePath, folderId);
-    if (FileExists(path)) {
-        gfx_printf("-- Theme found: %s\n", path);
-        FolderDelete(path);
-    }
-    free(path);
+void m_entry_fixMacSpecialFolders(char *path){
+    // browse path
+    // list files & folders
+    // if file -> delete
+    // if folder !== nintendo
+    //      if folder m_entry_fixMacSpecialFolders with new path
 }
 
-void deleteInstalledThemes(){
-    gfx_clearscreen();
-    gfx_printf("\n\n-- Deleting installed themes.\n\n");
-    deleteTheme("sd:/atmosphere/contents", "0100000000001000");
-    deleteTheme("sd:/atmosphere/contents", "0100000000001007");
-    deleteTheme("sd:/atmosphere/contents", "0100000000001013");
-
-    gfx_printf("\n\n Done, press a key to proceed.");
-    hidWait();
-}
-
-void fixClingWrap(){
-    gfx_clearscreen();
-    gfx_printf("\n\n-- Fixing ClingWrap.\n\n");
-    char *bpath = CpyStr("sd:/_b0otloader");
-    char *bopath = CpyStr("sd:/bootloader");
-    char *kpath = CpyStr("sd:/atmosphere/_k1ps");
-    char *kopath = CpyStr("sd:/atmosphere/kips");
-
-    if (FileExists(bpath)) {
-        if (FileExists(bopath)) {
-            FolderDelete(bopath);
-        }
-        int res = f_rename(bpath, bopath);
-        if (res){
-            DrawError(newErrCode(res));
-        }
-        gfx_printf("-- Fixed Bootloader\n");
-    }
-
-    if (FileExists(kpath)) {
-        if (FileExists(kopath)) {
-            FolderDelete(kopath);
-        }
-        int res = f_rename(bpath, kopath);
-        if (res){
-            DrawError(newErrCode(res));
-        }
-        gfx_printf("-- Fixed kips\n");
-    }
-
-    free(bpath);
-    free(bopath);
-    free(kpath);
-    free(kopath);
-
-    gfx_printf("\n\n Done, press a key to proceed.");
-    hidWait();
-}
-
-void fixAIOUpdate(){
-    gfx_clearscreen();
-    gfx_printf("\n\n-- Fix broken Switch-AiO-Updater update.\n\n");
-
-    char *aio_fs_path = CpyStr("sd:/atmosphere/fusee-secondary.bin.aio");
-    char *aio_p_path = CpyStr("sd:/sept/payload.bin.aio");
-    char *aio_strt_path = CpyStr("sd:/atmosphere/stratosphere.romfs.aio");
-
-    char *o_fs_path = CpyStr("sd:/atmosphere/fusee-secondary.bin");
-    char *o_p_path = CpyStr("sd:/sept/payload.bin");
-    char *o_strt_path = CpyStr("sd:/atmosphere/stratosphere.romfs");
-
-    if (FileExists(aio_fs_path)) {
-        gfx_printf("Detected aio updated fusee-secondary file -> replacing original\n\n");
-        if (FileExists(o_fs_path)) {
-            DeleteFileSimple(o_fs_path);
-        }
-        RenameFileSimple(aio_fs_path, o_fs_path);
-    }
-    free(aio_fs_path);
-    free(o_fs_path);
-
-    if (FileExists(aio_p_path)) {
-        gfx_printf("Detected aio updated paload file -> replacing original\n\n");
-        if (FileExists(o_p_path)) {
-            DeleteFileSimple(o_p_path);
-        }
-        RenameFileSimple(aio_p_path, o_p_path);
-    }
-    free(aio_p_path);
-    free(o_p_path);
-
-    if (FileExists(aio_strt_path)) {
-        gfx_printf("Detected aio updated stratosphere file -> replacing original\n\n");
-        if (FileExists(o_strt_path)) {
-            DeleteFileSimple(o_strt_path);
-        }
-        RenameFileSimple(aio_strt_path, o_strt_path);
-    }
-    free(aio_strt_path);
-    free(o_strt_path);
-
-
-    gfx_printf("\n\n Done, press a key to proceed.");
-    hidWait();
-
-}
-
-void stillNoBootInfo(){
+void m_entry_stillNoBootInfo(){
     gfx_clearscreen();
     gfx_printf("\n\n-- My switch still does not boot.\n\n");
 
@@ -315,37 +396,66 @@ void stillNoBootInfo(){
     hidWait();
 }
 
-void fixAll(){
+void m_entry_ViewCredits(){
     gfx_clearscreen();
-    deleteBootFlags();
-    deleteInstalledThemes();
-    fixClingWrap();
-    fixAIOUpdate();
-
-
-    stillNoBootInfo();
+    gfx_printf("\nCommon Problem Resolver v%d.%d.%d\nBy Team Neptune\n\nBased on TegraExplorer by SuchMemeManySkill,\nLockpick_RCM & Hekate, from shchmue & CTCaer\n\n\n", LP_VER_MJ, LP_VER_MN, LP_VER_BF);
+    hidWait();
 }
 
+void m_entry_fixAll(){
+    gfx_clearscreen();
+    m_entry_deleteBootFlags();
+    m_entry_deleteInstalledThemes();
+    m_entry_fixClingWrap();
+    m_entry_fixAIOUpdate();
+
+
+    m_entry_stillNoBootInfo();
+}
+
+
+///////////////////////////////////////////
+
+
+void RebootToAMS(){
+    launch_payload("sd:/atmosphere/reboot_payload.bin");
+}
+
+void RebootToHekate(){
+    launch_payload("sd:/bootloader/update.bin");
+}
+
+void MountOrUnmountSD(){
+    gfx_clearscreen();
+    if (sd_mounted)
+        sd_unmount();
+    else if (!sd_mount())
+        hidWait();
+}
+
+
+void archBitHelperA(){
+    m_entry_fixArchiveBit(0);
+}
+void archBitHelperN(){
+    m_entry_fixArchiveBit(1);
+}
+
+
 menuPaths mainMenuPaths[] = {
-    [DeleteBootFlags] = deleteBootFlags,
-    [DeleteThemes] = deleteInstalledThemes,
-    [FixClingWrap] = fixClingWrap,
-    [FixAIOUpdaterBoot] = fixAIOUpdate,
-    [FixAll] = fixAll,
-    [MainViewStillNoBootInfo] = stillNoBootInfo,
-    // [MainBrowseSd] = HandleSD,
-    // [MainMountSd] = MountOrUnmountSD,
-    // [MainBrowseEmmc] = HandleEMMC,
-    // [MainBrowseEmummc] = HandleEMUMMC,
-    // [MainPartitionSd] = FormatSD,
-    // [MainDumpFw] = DumpSysFw,
-    // [MainViewKeys] = ViewKeys,
-    // [MainRebootAMS] = RebootToAMS,
+    [DeleteBootFlags] = m_entry_deleteBootFlags,
+    [DeleteThemes] = m_entry_deleteInstalledThemes,
+    [FixClingWrap] = m_entry_fixClingWrap,
+    [FixAIOUpdaterBoot] = m_entry_fixAIOUpdate,
+    [FixArchiveBitA] = archBitHelperA,
+    [FixArchiveBitN] = archBitHelperN,
+    // [FixMacSpecialFolders] = m_entry_fixMacSpecialFolders,
+    [FixAll] = m_entry_fixAll,
+    [MainViewStillNoBootInfo] = m_entry_stillNoBootInfo,
     [MainRebootHekate] = RebootToHekate,
     [MainRebootRCM] = reboot_rcm,
     [MainPowerOff] = power_off,
-    [MainViewCredits] = ViewCredits,
-    // [MainRebootNormal] = reboot_normal
+    [MainViewCredits] = m_entry_ViewCredits,
 };
 
 void EnterMainMenu(){
