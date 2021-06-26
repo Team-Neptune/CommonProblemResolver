@@ -37,8 +37,9 @@ enum {
     FixAIOUpdaterBoot,
     FixArchiveBitA,
     FixArchiveBitN,
-    // FixMacSpecialFolders,
-    FixAll,
+    // FixAll,
+    MainConvenience,
+    FixMacSpecialFolders,
     MainOther,
     MainViewStillNoBootInfo,
     MainViewCredits,
@@ -51,18 +52,28 @@ enum {
 };
 
 MenuEntry_t mainMenuEntries[] = {
-    [MainExplore] = {.optionUnion = COLORTORGB(COLOR_WHITE) | SKIPBIT, .name = "-- Tools --"},
+    [MainExplore] = {.optionUnion = COLORTORGB(COLOR_WHITE) | SKIPBIT, .name = "-- Bootfixes --"},
     [DeleteBootFlags] = {.optionUnion = COLORTORGB(COLOR_GREEN), .name = "Disable automatic sysmodule startup"},
     [DeleteThemes] = {.optionUnion = COLORTORGB(COLOR_GREEN), .name = "Delete installed themes"},
     [FixClingWrap] = {.optionUnion = COLORTORGB(COLOR_GREEN), .name = "Fix ClingWrap"},
     [FixAIOUpdaterBoot] = {.optionUnion = COLORTORGB(COLOR_GREEN), .name = "Fix Switch-AiO-Updater update"},
     [FixArchiveBitA] = {.optionUnion = COLORTORGB(COLOR_GREEN), .name = "Fix archive bit (all folders except nintendo)"},
     [FixArchiveBitN] = {.optionUnion = COLORTORGB(COLOR_GREEN), .name = "Fix archive bit (nintendo folder)"},
-    // [FixMacSpecialFolders] = {.optionUnion = COLORTORGB(COLOR_GREEN), .name = "Remove special folders created by Mac"},
-    [FixAll] = {.optionUnion = COLORTORGB(COLOR_GREEN), .name = "Try everything"},
-    [MainOther] = {.optionUnion = COLORTORGB(COLOR_GREEN) | SKIPBIT, .name = "\n-- Other --"},
+    // [FixAll] = {.optionUnion = COLORTORGB(COLOR_GREEN), .name = "Try everything"},
 
+    [MainConvenience] = {.optionUnion = COLORTORGB(COLOR_WHITE) | SKIPBIT, .name = "\n-- Convenience --"},
+    [FixMacSpecialFolders] = {.optionUnion = COLORTORGB(COLOR_ORANGE), .name = "Remove special folders created by Mac"},
 
+    [MainOther] = {.optionUnion = COLORTORGB(COLOR_WHITE) | SKIPBIT, .name = "\n-- Other --"},
+    [MainViewStillNoBootInfo] = {.optionUnion = COLORTORGB(COLOR_YELLOW), .name = "My switch still does not boot"},
+    [MainViewCredits] = {.optionUnion = COLORTORGB(COLOR_YELLOW), .name = "Credits"},
+
+    [MainExit] = {.optionUnion = COLORTORGB(COLOR_WHITE) | SKIPBIT, .name = "\n-- Exit --"},
+    [MainPowerOff] = {.optionUnion = COLORTORGB(COLOR_VIOLET), .name = "Power off"},
+    [MainRebootRCM] = {.optionUnion = COLORTORGB(COLOR_VIOLET), .name = "Reboot to RCM"},
+    // [MainRebootNormal] = {.optionUnion = COLORTORGB(COLOR_VIOLET), .name = "Reboot normally"},
+    [MainRebootHekate] = {.optionUnion = COLORTORGB(COLOR_VIOLET), .name = "Reboot to bootloader/update.bin"},
+    [MainRebootAMS] = {.optionUnion = COLORTORGB(COLOR_VIOLET), .name = "Reboot to atmosphere/reboot_payload.bin"}
     
     
     // [MainBrowseSd] = {.optionUnion = COLORTORGB(COLOR_GREEN), .name = "Browse SD"},
@@ -73,15 +84,7 @@ MenuEntry_t mainMenuEntries[] = {
     // [MainPartitionSd] = {.optionUnion = COLORTORGB(COLOR_ORANGE), .name = "Partition the sd"},
     // [MainDumpFw] = {.optionUnion = COLORTORGB(COLOR_BLUE), .name = "Dump Firmware"},
     // [MainViewKeys] = {.optionUnion = COLORTORGB(COLOR_YELLOW), .name = "View dumped keys"},
-    [MainOther] = {.optionUnion = COLORTORGB(COLOR_WHITE) | SKIPBIT, .name = "\n-- Other --"},
-    [MainViewStillNoBootInfo] = {.optionUnion = COLORTORGB(COLOR_YELLOW), .name = "My switch still does not boot"},
-    [MainViewCredits] = {.optionUnion = COLORTORGB(COLOR_YELLOW), .name = "Credits"},
-    [MainExit] = {.optionUnion = COLORTORGB(COLOR_WHITE) | SKIPBIT, .name = "\n-- Exit --"},
-    [MainPowerOff] = {.optionUnion = COLORTORGB(COLOR_VIOLET), .name = "Power off"},
-    [MainRebootRCM] = {.optionUnion = COLORTORGB(COLOR_VIOLET), .name = "Reboot to RCM"},
-    // [MainRebootNormal] = {.optionUnion = COLORTORGB(COLOR_VIOLET), .name = "Reboot normally"},
-    [MainRebootHekate] = {.optionUnion = COLORTORGB(COLOR_VIOLET), .name = "Reboot to bootloader/update.bin"},
-    [MainRebootAMS] = {.optionUnion = COLORTORGB(COLOR_VIOLET), .name = "Reboot to atmosphere/reboot_payload.bin"}
+
 };
 
 void HandleSD(){
@@ -132,8 +135,8 @@ menuPaths mainMenuPaths[] = {
     [FixAIOUpdaterBoot] = m_entry_fixAIOUpdate,
     [FixArchiveBitA] = archBitHelperA,
     [FixArchiveBitN] = archBitHelperN,
-    // [FixMacSpecialFolders] = m_entry_fixMacSpecialFolders,
-    [FixAll] = m_entry_fixAll,
+    [FixMacSpecialFolders] = m_entry_fixMacSpecialFolders,
+    // [FixAll] = m_entry_fixAll,
     [MainViewStillNoBootInfo] = m_entry_stillNoBootInfo,
     [MainRebootHekate] = RebootToHekate,
     [MainRebootRCM] = reboot_rcm,

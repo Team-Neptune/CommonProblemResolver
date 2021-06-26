@@ -15,6 +15,13 @@
 #include "../utils/utils.h"
 #include "../fs/fsutils.h"
 
+#include <unistd.h>
+#include <sys/types.h>
+// #include <dirent.h>
+// #include <stdio.h>
+#include <string.h>
+#include <sys/stat.h>
+
 void _DeleteFileSimple(char *thing){
     //char *thing = CombinePaths(path, entry.name);
     int res = f_unlink(thing);
@@ -27,6 +34,114 @@ void _RenameFileSimple(char *sourcePath, char *destPath){
     if (res){
         DrawError(newErrCode(res));
     }
+}
+ErrCode_t _FolderDelete(const char *path){
+    int res = 0;
+    ErrCode_t ret = newErrCode(0);
+    u32 x, y;
+    gfx_con_getpos(&x, &y);
+    Vector_t fileVec = ReadFolder(path, &res);
+    if (res){
+        ret = newErrCode(res);
+    }
+    else {
+        vecDefArray(FSEntry_t *, fs, fileVec);
+        for (int i = 0; i < fileVec.count && !ret.err; i++){
+            char *temp = CombinePaths(path, fs[i].name);
+            if (fs[i].isDir){
+                ret = _FolderDelete(temp);
+            }
+            else {
+                res = f_unlink(temp);
+                if (res){
+                    ret = newErrCode(res);
+                }             
+            }
+            free(temp);
+        }
+    }
+    if (!ret.err){
+        res = f_unlink(path);
+        if (res)
+            ret = newErrCode(res);
+    }
+    clearFileVector(&fileVec);
+    return ret;
+}
+int _StartsWith(const char *a, const char *b)
+{
+   if(strncmp(a, b, strlen(b)) == 0) return 1;
+   return 0;
+}
+
+int listdir(char *path, u32 hos_folder)
+{
+   	FRESULT res;
+	DIR dir;
+	u32 dirLength = 0;
+	static FILINFO fno;
+
+    // Open directory.
+	res = f_opendir(&dir, path);
+	if (res != FR_OK)
+		return res;
+
+    dirLength = strlen(path);
+	for (;;)
+	{
+		// Clear file or folder path.
+		path[dirLength] = 0;
+		// Read a directory item.
+		res = f_readdir(&dir, &fno);
+		// Break on error or end of dir.
+		if (res != FR_OK || fno.fname[0] == 0)
+			break;
+		// Skip official Nintendo dir if started from root.
+		if (!hos_folder && !strcmp(fno.fname, "Nintendo"))
+			continue;
+
+		// // Set new directory or file.
+		memcpy(&path[dirLength], "/", 1);
+		memcpy(&path[dirLength + 1], fno.fname, strlen(fno.fname) + 1);
+        // gfx_printf("THING: %s\n", fno.fname);
+        // gfx_printf("Path: %s\n", dir);
+        // Is it a directory?
+		if (fno.fattrib & AM_DIR)
+		{
+            if (
+                strcmp(fno.fname, ".Trash") == 0 ||
+                strcmp(fno.fname, ".Trashes") == 0 ||
+                strcmp(fno.fname, ".DS_Store") == 0 ||
+                strcmp(fno.fname, ".Spotlight-V100")  == 0 ||
+                strcmp(fno.fname, ".apDisk")  == 0 ||
+                strcmp(fno.fname, ".VolumeIcon.icns")  == 0 ||
+                strcmp(fno.fname, ".fseventsd")  == 0 ||
+                strcmp(fno.fname, ".TemporaryItems")  == 0
+            ) {
+                _FolderDelete(path);
+            }
+
+			// Enter the directory.
+			listdir(path, 0);
+			if (res != FR_OK)
+				break;
+		} else {
+            if (
+                strcmp(fno.fname, ".DS_Store") == 0 ||
+                strcmp(fno.fname, ".Spotlight-V100")  == 0 ||
+                strcmp(fno.fname, ".apDisk")  == 0 ||
+                strcmp(fno.fname, ".VolumeIcon.icns")  == 0 ||
+                strcmp(fno.fname, ".fseventsd")  == 0 ||
+                strcmp(fno.fname, ".TemporaryItems")  == 0 ||
+                _StartsWith(fno.fname, "._")
+            ) {
+                _DeleteFileSimple(path);
+            }
+        }
+	}
+    f_closedir(&dir);
+    free(path);
+	return res;
 }
 
 int _fix_attributes(char *path, u32 *total, u32 hos_folder, u32 check_first_run){
@@ -286,7 +401,15 @@ void m_entry_deleteBootFlags(){
     hidWait();
 }
 
-void m_entry_fixMacSpecialFolders(char *path){
+
+
+void m_entry_fixMacSpecialFolders(){
+    gfx_clearscreen();
+    gfx_printf("\n\n-- Fix mac folders (this can take some time, please wait.)\n\n");
+    listdir("/", 0);
+    gfx_printf("\n\rDone, press a key to proceed.");
+    hidWait();
+    
     // browse path
     // list files & folders
     // if file -> delete
